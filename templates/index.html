@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACIM 한국어 검색엔진</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: #2c3e50;
+            color: white;
+            padding: 24px 0;
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        header h1 {
+            font-size: 1.8em;
+            font-weight: 600;
+        }
+
+        header p {
+            opacity: 0.8;
+            margin-top: 4px;
+        }
+
+        .search-panel {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 24px;
+        }
+
+        .search-panel h2 {
+            font-size: 1.1em;
+            margin-bottom: 16px;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 8px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        .form-group select,
+        .form-group input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.95em;
+            font-family: inherit;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
+        }
+
+        .doc-checkboxes {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .doc-checkboxes label {
+            font-weight: normal;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .doc-checkboxes input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+        }
+
+        .keyword-section {
+            margin-top: 16px;
+        }
+
+        .keyword-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .keyword-row input {
+            flex: 1;
+            min-width: 150px;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.95em;
+            font-family: inherit;
+        }
+
+        .keyword-row input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
+        }
+
+        .operator-toggle {
+            display: flex;
+            gap: 0;
+            margin-bottom: 12px;
+        }
+
+        .operator-toggle button {
+            padding: 8px 20px;
+            border: 2px solid #3498db;
+            background: white;
+            color: #3498db;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+
+        .operator-toggle button:first-child {
+            border-radius: 4px 0 0 4px;
+        }
+
+        .operator-toggle button:last-child {
+            border-radius: 0 4px 4px 0;
+            border-left: none;
+        }
+
+        .operator-toggle button.active {
+            background: #3498db;
+            color: white;
+        }
+
+        .search-btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1.05em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 16px;
+        }
+
+        .search-btn:hover {
+            background: #2980b9;
+        }
+
+        .search-btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        .results-panel {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #3498db;
+        }
+
+        .results-header h2 {
+            font-size: 1.1em;
+            color: #2c3e50;
+        }
+
+        .results-count {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+
+        .result-item {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: box-shadow 0.2s;
+        }
+
+        .result-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .result-meta {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .result-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .badge-version {
+            background: #e8f4fd;
+            color: #2980b9;
+        }
+
+        .badge-doc {
+            background: #fef3e2;
+            color: #e67e22;
+        }
+
+        .badge-page {
+            background: #e8f8f5;
+            color: #27ae60;
+        }
+
+        .badge-keyword {
+            background: #fdeaea;
+            color: #e74c3c;
+        }
+
+        .result-snippet {
+            font-size: 0.95em;
+            line-height: 1.7;
+            color: #444;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .result-snippet mark {
+            background: #fff3cd;
+            color: #856404;
+            padding: 1px 3px;
+            border-radius: 2px;
+            font-weight: 600;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #95a5a6;
+        }
+
+        .no-results .icon {
+            font-size: 2em;
+            margin-bottom: 8px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .range-inputs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .range-inputs input {
+            width: 80px;
+        }
+
+        .range-inputs span {
+            color: #999;
+        }
+
+        nav {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 12px;
+        }
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 6px 16px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.4);
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+        nav a:hover { background: rgba(255,255,255,0.15); }
+        nav a.active { background: rgba(255,255,255,0.25); border-color: white; }
+
+        @media (max-width: 640px) {
+            .container { padding: 12px; }
+            .form-row { flex-direction: column; }
+            .keyword-row input { min-width: 100px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>📖 ACIM 한국어 검색엔진</h1>
+            <p>기적수업 한국어 번역본 검색</p>
+            <nav>
+                <a href="/" class="active">🔍 검색</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="search-panel">
+            <h2>🔍 검색 설정</h2>
+
+            <!-- Version Selection -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label>번역 버전</label>
+                    <select id="version">
+                        {% for key, info in doc_info.items() %}
+                        <option value="{{ key }}">{{ info.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Document Selection -->
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label>검색 범위 (문서 선택)</label>
+                <div class="doc-checkboxes" id="docCheckboxes">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Page Range -->
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label>페이지 범위</label>
+                <div class="range-inputs">
+                    <input type="number" id="pageFrom" value="1" min="1">
+                    <span>~</span>
+                    <input type="number" id="pageTo" value="9999" min="1">
+                    <span>페이지</span>
+                </div>
+            </div>
+
+            <!-- Keyword Section -->
+            <div class="keyword-section">
+                <label style="font-weight:600; font-size:0.9em; color:#555; display:block; margin-bottom:8px;">키워드 (최대 4개)</label>
+                <div class="operator-toggle">
+                    <button id="btnAND" class="active" onclick="setOperator('AND')">AND</button>
+                    <button id="btnOR" onclick="setOperator('OR')">OR</button>
+                </div>
+                <div class="keyword-row">
+                    <input type="text" id="kw1" placeholder="키워드 1" onkeydown="handleEnter(event)">
+                    <input type="text" id="kw2" placeholder="키워드 2" onkeydown="handleEnter(event)">
+                </div>
+                <div class="keyword-row">
+                    <input type="text" id="kw3" placeholder="키워드 3" onkeydown="handleEnter(event)">
+                    <input type="text" id="kw4" placeholder="키워드 4" onkeydown="handleEnter(event)">
+                </div>
+            </div>
+
+            <button class="search-btn" id="searchBtn" onclick="doSearch()">검색</button>
+        </div>
+
+        <div class="results-panel">
+            <div class="results-header">
+                <h2>📋 검색 결과</h2>
+                <span class="results-count" id="resultsCount"></span>
+            </div>
+            <div id="resultsBody">
+                <div class="no-results">
+                    <div class="icon">🔎</div>
+                    <p>키워드를 입력하고 검색 버튼을 눌러주세요.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DOC_INFO = {{ doc_info | tojson }};
+        let currentOperator = 'AND';
+
+        function setOperator(op) {
+            currentOperator = op;
+            document.getElementById('btnAND').classList.toggle('active', op === 'AND');
+            document.getElementById('btnOR').classList.toggle('active', op === 'OR');
+        }
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') doSearch();
+        }
+
+        function updateDocCheckboxes() {
+            const version = document.getElementById('version').value;
+            const container = document.getElementById('docCheckboxes');
+            const info = DOC_INFO[version];
+            if (!info) return;
+
+            container.innerHTML = '';
+            for (const docName of Object.keys(info.documents)) {
+                const docMeta = info.documents[docName];
+                const label = document.createElement('label');
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = docName;
+                cb.checked = true;
+                cb.dataset.maxPage = docMeta.max_page;
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(` ${docName} (${docMeta.total_pages}p)`));
+                container.appendChild(label);
+            }
+
+            // Add change listeners to checkboxes to update page range
+            container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.addEventListener('change', updatePageRange);
+            });
+
+            updatePageRange();
+        }
+
+        function updatePageRange() {
+            const version = document.getElementById('version').value;
+            const info = DOC_INFO[version];
+            if (!info) return;
+
+            const checked = document.querySelectorAll('#docCheckboxes input:checked');
+            let minPage = 1;
+            let maxPage = 1;
+            if (checked.length > 0) {
+                const selectedDocs = Array.from(checked).map(cb => cb.value);
+                const pages = selectedDocs.map(d => info.documents[d]).filter(Boolean);
+                minPage = Math.min(...pages.map(d => d.min_page));
+                maxPage = Math.max(...pages.map(d => d.max_page));
+            }
+
+            const fromInput = document.getElementById('pageFrom');
+            const toInput = document.getElementById('pageTo');
+            fromInput.min = minPage;
+            fromInput.max = maxPage;
+            fromInput.value = minPage;
+            toInput.min = minPage;
+            toInput.max = maxPage;
+            toInput.value = maxPage;
+        }
+
+        document.getElementById('version').addEventListener('change', updateDocCheckboxes);
+        updateDocCheckboxes();
+
+        async function doSearch() {
+            const version = document.getElementById('version').value;
+            const checkboxes = document.querySelectorAll('#docCheckboxes input:checked');
+            const documents = Array.from(checkboxes).map(cb => cb.value);
+            const pageFrom = parseInt(document.getElementById('pageFrom').value) || 1;
+            const pageTo = parseInt(document.getElementById('pageTo').value) || 9999;
+            const keywords = [
+                document.getElementById('kw1').value,
+                document.getElementById('kw2').value,
+                document.getElementById('kw3').value,
+                document.getElementById('kw4').value,
+            ].filter(k => k.trim());
+
+            if (keywords.length === 0) {
+                alert('키워드를 최소 1개 입력해주세요.');
+                return;
+            }
+
+            if (documents.length === 0) {
+                alert('검색할 문서를 최소 1개 선택해주세요.');
+                return;
+            }
+
+            const btn = document.getElementById('searchBtn');
+            btn.disabled = true;
+            btn.textContent = '검색 중...';
+            document.getElementById('resultsBody').innerHTML = '<div class="loading">⏳ 검색 중입니다...</div>';
+
+            try {
+                const resp = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        version,
+                        documents,
+                        page_from: pageFrom,
+                        page_to: pageTo,
+                        keywords,
+                        operator: currentOperator,
+                    }),
+                });
+                const data = await resp.json();
+                renderResults(data);
+            } catch (err) {
+                document.getElementById('resultsBody').innerHTML =
+                    `<div class="no-results"><div class="icon">❌</div><p>오류가 발생했습니다: ${err.message}</p></div>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '검색';
+            }
+        }
+
+        function renderResults(data) {
+            const body = document.getElementById('resultsBody');
+            const count = document.getElementById('resultsCount');
+
+            count.textContent = `총 ${data.count}건`;
+
+            if (data.results.length === 0) {
+                body.innerHTML = `<div class="no-results"><div class="icon">😔</div><p>검색 결과가 없습니다.</p></div>`;
+                return;
+            }
+
+            let html = '';
+            for (const r of data.results) {
+                html += `
+                <div class="result-item">
+                    <div class="result-meta">
+                        <span class="result-badge badge-version">${escapeHtml(r.version_label)}</span>
+                        <span class="result-badge badge-doc">${escapeHtml(r.document)}</span>
+                        <span class="result-badge badge-page">${r.page}페이지</span>
+                        ${r.matched_keywords.map(k => `<span class="result-badge badge-keyword">${escapeHtml(k)}</span>`).join('')}
+                    </div>
+                    <div class="result-snippet">${r.snippet}</div>
+                </div>`;
+            }
+            body.innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
