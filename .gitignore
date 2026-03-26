@@ -1,3 +1,5 @@
 .env
 *.pyc
 version/
+.cache/
+__pycache__/
