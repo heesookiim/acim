@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACIM 비교 리더</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        header {
+            background: #2c3e50;
+            color: white;
+            padding: 24px 0;
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        header p { opacity: 0.8; margin-top: 4px; }
+        nav { display: flex; justify-content: center; gap: 16px; margin-top: 12px; }
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 6px 16px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.4);
+            font-size: 0.9em;
+        }
+        nav a.active { background: rgba(255,255,255,0.25); border-color: white; }
+        
+        .panel {
+            background: white;
+            border-radius: 8px;
+            padding: 18px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 18px;
+        }
+        .filters { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+        .filters label { font-size: 0.85em; font-weight: 600; color: #555; display: block; margin-bottom: 4px; }
+        .filters select {
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+            min-width: 200px;
+        }
+        .btn {
+            padding: 9px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #3498db;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .reader-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+        
+        .version-col {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .version-header {
+            background: #e8f4fd;
+            padding: 12px 16px;
+            border-bottom: 1px solid #d0e8fa;
+            font-weight: 600;
+            color: #2980b9;
+            text-align: center;
+        }
+        
+        .page-block {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .page-block:last-child {
+            border-bottom: none;
+        }
+        .page-number {
+            font-size: 0.8em;
+            color: #999;
+            margin-bottom: 12px;
+            text-align: right;
+        }
+        
+        .content-item {
+            margin-bottom: 12px;
+        }
+        .item-title {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-top: 16px;
+            margin-bottom: 8px;
+        }
+        .item-text {
+            font-size: 1em;
+            color: #333;
+            text-align: justify;
+        }
+        
+        mark {
+            background: #fff3cd;
+            color: #856404;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        .no-results { color: #888; text-align: center; padding: 30px 0; grid-column: 1 / -1; }
+        
+        @media (max-width: 800px) {
+            .reader-layout { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>📚 ACIM 비교 리더</h1>
+            <p>원본과 박영수 버전 나란히 보기</p>
+            <nav>
+                <a href="/">🔍 검색</a>
+                <a href="/reader" class="active">📚 리더</a>
+            </nav>
+        </div>
+    </header>
+    
+    <div class="container">
+        <div class="panel">
+            <div class="filters">
+                <div>
+                    <label>챕터</label>
+                    <select id="chapter"></select>
+                </div>
+                <div>
+                    <label>섹션</label>
+                    <select id="section"></select>
+                </div>
+                <div>
+                    <button class="btn" id="loadBtn">불러오기</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="reader-layout" id="readerContainer">
+            <!-- Content loaded here -->
+        </div>
+    </div>
+    
+    <script>
+        const CATALOG = {{ catalog | tojson }};
+        
+        // URL Params
+        const urlParams = new URLSearchParams(window.location.search);
+        const initChapter = urlParams.get('chapter');
+        const initSection = urlParams.get('section');
+        const hlKeywords = urlParams.get('hl') ? urlParams.get('hl').split(',') : [];
+
+        function fillChapters() {
+            const sel = document.getElementById('chapter');
+            sel.innerHTML = '';
+            for (const ch of CATALOG) {
+                const opt = document.createElement('option');
+                opt.value = ch.chapter;
+                opt.textContent = `제${ch.chapter}장`;
+                sel.appendChild(opt);
+            }
+            if (initChapter) {
+                sel.value = initChapter;
+            }
+        }
+
+        function fillSections() {
+            const chVal = document.getElementById('chapter').value;
+            const sel = document.getElementById('section');
+            sel.innerHTML = '<option value="">(섹션 전체)</option>';
+            
+            const ch = CATALOG.find(c => String(c.chapter) === String(chVal));
+            if (ch && ch.sections) {
+                for (const sec of ch.sections) {
+                    if (!sec) continue;
+                    const opt = document.createElement('option');
+                    opt.value = sec;
+                    opt.textContent = sec;
+                    sel.appendChild(opt);
+                }
+            }
+            
+            if (initSection && Array.from(sel.options).some(o => o.value === initSection)) {
+                sel.value = initSection;
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text ?? '';
+            return div.innerHTML;
+        }
+        
+        function highlightText(text) {
+            if (!hlKeywords.length) return escapeHtml(text);
+            let escaped = escapeHtml(text);
+            for (const kw of hlKeywords) {
+                const pattern = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                escaped = escaped.replace(pattern, match => `<mark>${match}</mark>`);
+            }
+            return escaped;
+        }
+
+        function renderCol(title, pagesData) {
+            if (!pagesData || pagesData.length === 0) {
+                return `
+                    <div class="version-col">
+                        <div class="version-header">${title}</div>
+                        <div class="page-block" style="color:#999; text-align:center;">내용이 없습니다.</div>
+                    </div>`;
+            }
+            
+            let html = `<div class="version-col"><div class="version-header">${title}</div>`;
+            
+            for (const page of pagesData) {
+                html += `<div class="page-block">
+                    <div class="page-number">p. ${page.page}</div>`;
+                
+                for (const item of page.items) {
+                    if (item.type === 'title') {
+                        html += `<div class="content-item item-title">${highlightText(item.content)}</div>`;
+                    } else if (item.type !== 'image' && item.type !== 'discarded') {
+                        html += `<div class="content-item item-text">${highlightText(item.content)}</div>`;
+                    }
+                }
+                html += `</div>`;
+            }
+            html += `</div>`;
+            return html;
+        }
+
+        async function loadContent() {
+            const chapter = document.getElementById('chapter').value;
+            const section = document.getElementById('section').value;
+            const btn = document.getElementById('loadBtn');
+            const container = document.getElementById('readerContainer');
+            
+            if (!chapter) return;
+            
+            btn.disabled = true;
+            btn.textContent = '불러오는 중...';
+            container.innerHTML = '<div class="no-results">데이터를 불러오는 중입니다...</div>';
+            
+            try {
+                const params = new URLSearchParams({ chapter });
+                if (section) params.set('section', section);
+                
+                const resp = await fetch(`/api/reader/section?${params.toString()}`);
+                const data = await resp.json();
+                
+                container.innerHTML = 
+                    renderCol('원본 (Original)', data.original) +
+                    renderCol('박영수 (Park)', data.park);
+                    
+                // Update URL without reload
+                const newUrl = new URL(window.location);
+                newUrl.searchParams.set('chapter', chapter);
+                if (section) newUrl.searchParams.set('section', section);
+                else newUrl.searchParams.delete('section');
+                window.history.pushState({}, '', newUrl);
+                
+                // Auto-scroll to first highlight if any
+                if (hlKeywords.length > 0) {
+                    setTimeout(() => {
+                        const firstMark = document.querySelector('mark');
+                        if (firstMark) {
+                            firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, 100);
+                }
+                
+            } catch (err) {
+                container.innerHTML = `<div class="no-results">오류가 발생했습니다: ${err.message}</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '불러오기';
+            }
+        }
+
+        document.getElementById('chapter').addEventListener('change', () => {
+            fillSections();
+            loadContent();
+        });
+        
+        document.getElementById('section').addEventListener('change', loadContent);
+        document.getElementById('loadBtn').addEventListener('click', loadContent);
+
+        // Init
+        fillChapters();
+        fillSections();
+        if (initChapter) {
+            loadContent();
+        }
+    </script>
+</body>
+</html>

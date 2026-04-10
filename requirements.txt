@@ -1,2 +1,5 @@
 Flask
 gunicorn
+certifi
+requests
+python-dotenv

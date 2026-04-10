@@ -227,11 +227,17 @@
             border-radius: 6px;
             padding: 16px;
             margin-bottom: 12px;
-            transition: box-shadow 0.2s;
+            transition: transform 0.1s, box-shadow 0.1s, border-color 0.2s;
         }
 
         .result-item:hover {
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .result-item[style*="cursor:pointer"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+            border-color: #3498db;
         }
 
         .result-meta {
@@ -352,6 +358,7 @@
             <p>기적수업 한국어 번역본 검색</p>
             <nav>
                 <a href="/" class="active">🔍 검색</a>
+                <a href="/reader">📚 리더</a>
             </nav>
         </div>
     </header>
@@ -560,13 +567,28 @@
 
             let html = '';
             for (const r of data.results) {
+                let readerUrl = '';
+                let readerLink = '';
+                if (r.document === '교과서' && r.chapter) {
+                    const params = new URLSearchParams();
+                    params.set('chapter', r.chapter);
+                    if (r.section) params.set('section', r.section);
+                    if (r.matched_keywords && r.matched_keywords.length > 0) {
+                        params.set('hl', r.matched_keywords.join(','));
+                    }
+                    readerUrl = `/reader?${params.toString()}`;
+                    readerLink = `<span class="result-badge badge-reader" style="background:#f0f0f0; color:#333;">📖 리더에서 보기</span>`;
+                }
+
                 html += `
-                <div class="result-item">
+                <div class="result-item" ${readerUrl ? `style="cursor:pointer;" onclick="window.open('${readerUrl}', '_blank')"` : ''}>
                     <div class="result-meta">
                         <span class="result-badge badge-version">${escapeHtml(r.version_label)}</span>
                         <span class="result-badge badge-doc">${escapeHtml(r.document)}</span>
                         <span class="result-badge badge-page">${r.page}페이지</span>
+                        ${r.chapter ? `<span class="result-badge" style="background:#eef; color:#558;">제${r.chapter}장${r.section ? ' ' + escapeHtml(r.section) : ''}</span>` : ''}
                         ${r.matched_keywords.map(k => `<span class="result-badge badge-keyword">${escapeHtml(k)}</span>`).join('')}
+                        ${readerLink}
                     </div>
                     <div class="result-snippet">${r.snippet}</div>
                 </div>`;
