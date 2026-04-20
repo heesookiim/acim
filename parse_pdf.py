@@ -40,12 +40,12 @@ VERSIONS = {
             "학생용 연습서": {"path": "version/park/학생용_연습서_박영수.json", "docId": "cmntevs9s0009jl04804d5ck1"},
         },
     },
-    "combined": {
-        "label": "합본",
-        "files": {
-            "합본": {"path": "version/combined/합본.pdf", "docId": ""},
-        },
-    },
+    # "combined": {
+    #     "label": "합본",
+    #     "files": {
+    #         "합본": {"path": "version/combined/합본.pdf", "docId": ""},
+    #     },
+    # },
 }
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
