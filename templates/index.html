@@ -569,7 +569,7 @@
             for (const r of data.results) {
                 let readerUrl = '';
                 let readerLink = '';
-                if ((r.document === '교과서' || r.document === '교사용 지침서') && (r.chapter || r.section)) {
+                if ((r.document === '교과서' || r.document === '교사용 지침서' || r.document === '학생용 연습서') && (r.chapter || r.section)) {
                     const params = new URLSearchParams();
                     params.set('document', r.document);
                     if (r.chapter) params.set('chapter', r.chapter);
