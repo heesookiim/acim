@@ -3,5 +3,3 @@
 version/
 .cache/
 __pycache__/
-old_parse_data/
-*.cpython-*

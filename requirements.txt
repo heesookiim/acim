@@ -3,4 +3,3 @@ gunicorn
 certifi
 requests
 python-dotenv
-PyMuPDF
