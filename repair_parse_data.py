@@ -67,7 +67,9 @@ EXPECTED_PHRASES = [
 HANGUL = r"[\uAC00-\uD7A3]"
 MID_WORD_BREAK = re.compile(f"({HANGUL})\n({HANGUL})")
 PAGE_NUMBER_MARKER = re.compile(r"\s*-\s*\d+\s*-\s*")
+RUNNING_HEADER_WITH_PAGE = re.compile(r"^제\d+장[^\n]{0,60}\n\s*-\s*\d+\s*-\s*\n?")
 RUNNING_HEADER = re.compile(r"^제\d+장[^\n]{0,40}\n")
+HEADING_PREFIX = re.compile(r"^(?:[IVXLC]+\.|\d+\.)\s+")
 
 
 def normalize_text(text):
@@ -81,6 +83,7 @@ def normalize_text(text):
     for ch in ("\u200b", "\u200c", "\u200d", "\ufeff"):
         text = text.replace(ch, "")
 
+    text = RUNNING_HEADER_WITH_PAGE.sub("", text)
     text = PAGE_NUMBER_MARKER.sub(" ", text)
     text = RUNNING_HEADER.sub("", text)
 
@@ -103,8 +106,141 @@ def split_blocks(text):
     blocks = [b.strip() for b in re.split(r"\n+", text) if b.strip()]
     if len(blocks) > 1:
         return blocks
+    if re.match(r"^(?:[IVXLC]+\.|\d+\.|제\d+장)\s+", text.strip()):
+        return [text.strip()]
     sentences = re.split(r"(?<=[.!?。])\s+", text)
     return [s.strip() for s in sentences if s.strip()] or [text]
+
+
+def heading_candidates(page):
+    headings = []
+    for item in page.get("contents", []):
+        content = normalize_text(item.get("content", ""))
+        if not content or len(content) > 80:
+            continue
+        if content.startswith("제") or HEADING_PREFIX.match(content):
+            headings.append(content)
+    return sorted(set(headings), key=len, reverse=True)
+
+
+def split_embedded_headings(blocks, headings):
+    if not headings:
+        return blocks
+
+    split = []
+    for block in blocks:
+        queue = [block]
+        for heading in headings:
+            next_queue = []
+            for part in queue:
+                idx = part.find(heading)
+                if idx > 0:
+                    before = part[:idx].strip()
+                    after = part[idx:].strip()
+                    if before:
+                        next_queue.append(before)
+                    if after:
+                        next_queue.append(after)
+                else:
+                    next_queue.append(part)
+            queue = next_queue
+        split.extend(queue)
+    return split
+
+
+def split_page_blocks(text, page):
+    headings = heading_candidates(page)
+    heading_split_blocks = split_embedded_headings([text], headings)
+    blocks = []
+    for block in heading_split_blocks:
+        blocks.extend(split_blocks(block))
+    return blocks
+
+
+def signature(text):
+    """Return a compact comparison key robust to PDF spacing/noise."""
+    text = normalize_text(text)
+    text = re.sub(r"[^0-9A-Za-z가-힣IVXLC]+", "", text)
+    return text[:80]
+
+
+def item_meta(item, fallback):
+    chapter = item.get("chapter")
+    section = canonicalize_section(chapter, item.get("section"))
+    content = normalize_text(item.get("content", ""))
+    content_without_number = re.sub(r"^\d+\s+", "", content).strip()
+    if (
+        section
+        and re.match(r"^\d+\s+", content)
+        and content_without_number
+        and signature(content_without_number) == signature(section)
+        and section.endswith((".", "?", "!", ".”", ".”"))
+    ):
+        section = fallback.get("section")
+    if chapter is None:
+        chapter = fallback.get("chapter")
+    if section is None:
+        section = fallback.get("section")
+    section_raw = item.get("section_raw") or section or fallback.get("section_raw")
+    section_id = item.get("section_id") or get_section_id(chapter, section)
+    return {
+        "chapter": chapter,
+        "section_raw": section_raw,
+        "section": section,
+        "section_id": section_id,
+    }
+
+
+def build_metadata_anchors(page):
+    anchors = []
+    current_meta = {}
+    for item in page.get("contents", []):
+        content = item.get("content", "")
+        sig = signature(content)
+        if not sig:
+            continue
+        current_meta = item_meta(item, current_meta)
+        anchors.append({
+            "signature": sig,
+            "meta": current_meta,
+        })
+    return anchors
+
+
+def block_metadata(block, anchors, cursor, current_meta):
+    block_sig = signature(block)
+    if not block_sig:
+        return current_meta, cursor
+
+    best_index = None
+    best_score = 0
+    for idx in range(cursor, len(anchors)):
+        anchor_sig = anchors[idx]["signature"]
+        if not anchor_sig:
+            continue
+        score = common_prefix_len(block_sig, anchor_sig)
+        if score > best_score:
+            best_score = score
+            best_index = idx
+        if score >= min(16, len(anchor_sig), len(block_sig)):
+            break
+
+    if best_index is not None and best_score >= 4:
+        next_meta = current_meta.copy()
+        for key, value in anchors[best_index]["meta"].items():
+            if value is not None:
+                next_meta[key] = value
+        return next_meta, best_index + 1
+    return current_meta, cursor
+
+
+def common_prefix_len(left, right):
+    count = 0
+    for left_ch, right_ch in zip(left, right):
+        if left_ch != right_ch:
+            break
+        count += 1
+    return count
 
 
 def load_json(path):
@@ -282,28 +418,36 @@ def repair_page(page, local_text, state):
 
     if local_text:
         contents = []
-        current_chapter = default_chapter if default_chapter is not None else state.get("chapter")
-        current_section = default_section if default_section is not None else state.get("section")
-        current_section_raw = default_section if default_section is not None else state.get("section_raw")
-        current_section_id = get_section_id(current_chapter, current_section)
+        current_meta = {
+            "chapter": default_chapter if default_chapter is not None else state.get("chapter"),
+            "section": default_section if default_section is not None else state.get("section"),
+            "section_raw": default_section if default_section is not None else state.get("section_raw"),
+            "section_id": get_section_id(
+                default_chapter if default_chapter is not None else state.get("chapter"),
+                default_section if default_section is not None else state.get("section"),
+            ),
+        }
+        anchors = build_metadata_anchors(page)
+        cursor = 0
 
-        for block in split_blocks(local_text):
+        for block in split_page_blocks(local_text, page):
+            current_meta, cursor = block_metadata(block, anchors, cursor, current_meta)
             contents.append({
                 "type": "text",
                 "content": block,
-                "chapter": current_chapter,
-                "section_raw": current_section_raw,
-                "section": current_section,
-                "section_id": current_section_id,
+                "chapter": current_meta.get("chapter"),
+                "section_raw": current_meta.get("section_raw"),
+                "section": current_meta.get("section"),
+                "section_id": current_meta.get("section_id"),
             })
 
         if contents:
             repaired["contents"] = contents
             state.update({
-                "chapter": contents[-1].get("chapter"),
-                "section": contents[-1].get("section"),
-                "section_raw": contents[-1].get("section_raw"),
-                "section_id": contents[-1].get("section_id"),
+                "chapter": current_meta.get("chapter"),
+                "section": current_meta.get("section"),
+                "section_raw": current_meta.get("section_raw"),
+                "section_id": current_meta.get("section_id"),
             })
     else:
         for item in existing_contents:
