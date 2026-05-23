@@ -166,33 +166,99 @@ def build_snippet(page_data, keywords):
     return "\n".join(parts)
 
 
+READER_DOCUMENTS = ("교과서", "교사용 지침서")
+READER_MIN_PAGES = {
+    ("교과서", "original"): 13,
+    ("교과서", "park"): 13,
+    ("교사용 지침서", "original"): 4,
+    ("교사용 지침서", "park"): 8,
+}
+
+
+TEACHER_GUIDE_SECTION_ALIASES = {
+    "예수는 치유에서 특별한 역할을 하는가?": "예수는 치유에서 특별한 위치에 있는가?",
+    "환생은 참인가?": "환생은 있는가?",
+    "“심령” 능력은 바람직한가?": "심령 능력은 바람직한가?",
+    "‘심령(psychic)’ 능력은 바람직한가?": "심령 능력은 바람직한가?",
+    "죽음이란 무엇인가?": "죽음은 무엇인가?",
+    "부활이란 무엇인가?": "부활은 무엇인가?",
+    "난이도를 지각하는 것을 어떻게 피할 수 있는가?": "난이도에 대한 지각을 어떻게 피할 수 있는가?",
+    "하느님의 교사는 생활환경에 변화를 요구받는가?": "신의 교사는 삶의 상황을 바꿔야 하는가?",
+    "각 사람은 결국에 심판을 받을 것인가?": "모든 사람이 마지막에 심판받을 것인가?",
+    "하느님의 교사는 학생의 마법 생각을 어떻게 다루는가?": "신의 교사는 마법 생각을 어떻게 다룰 것인가?",
+    "정의란 무엇인가?": "정의는 무엇인가?",
+    "치유와 속죄는 어떻게 관련되어 있는가?": "치유와 속죄는 어떤 관계인가?",
+    "그 밖의 주제에 대해": "그 밖의 것에 대하여",
+}
+
+
+def reader_section_key(document, chapter, section):
+    """Return a comparison key for reader section matching."""
+    canonical = canonicalize_section(chapter, section) or section
+    if not canonical:
+        return None
+    if document == "교사용 지침서":
+        canonical = TEACHER_GUIDE_SECTION_ALIASES.get(canonical, canonical)
+        canonical = canonical.replace("하느님", "신")
+        canonical = canonical.replace("생활환경", "삶의 상황")
+        canonical = canonical.replace("직접 도달", "직접도달")
+        canonical = re.sub(r"[“”\"'‘’()\[\]\s\xa0\-–—:：,.?…]+", "", canonical)
+        return canonical
+    return canonical
+
+
+def is_reader_page(document, version_key, page):
+    return page.get("page", 0) >= READER_MIN_PAGES.get((document, version_key), 1)
+
+
 def get_reader_catalog():
-    """Build a catalog of available chapters and sections from SEARCH_DATA."""
-    catalog = {}
+    """Build a catalog of available reader documents, chapters, and sections."""
+    catalog_by_doc = {}
     
-    # We will scan through original's pages to build the authoritative list
-    orig_data = SEARCH_DATA.get("original", {}).get("documents", {}).get("교과서", {})
-    pages = orig_data.get("pages", [])
-    
-    for page in pages:
-        for item in page.get("contents", []):
-            ch = item.get("chapter")
-            sec = item.get("section")
-            canonical_sec = canonicalize_section(ch, sec)
-            if ch is not None:
-                if str(ch) not in catalog:
-                    catalog[str(ch)] = []
-                if canonical_sec and canonical_sec not in catalog[str(ch)]:
-                    catalog[str(ch)].append(canonical_sec)
-                    
-    # Format catalog as list of dicts for easier JS rendering
-    formatted = []
-    for ch_num in sorted(catalog.keys(), key=lambda x: int(x)):
-        formatted.append({
-            "chapter": ch_num,
-            "sections": catalog[ch_num]
-        })
-    return formatted
+    for doc_name in READER_DOCUMENTS:
+        catalog = {}
+        section_keys = set()
+        has_chapters = False
+
+        for version_key in ("original", "park"):
+            doc_data = SEARCH_DATA.get(version_key, {}).get("documents", {}).get(doc_name, {})
+            for page in doc_data.get("pages", []):
+                if not is_reader_page(doc_name, version_key, page):
+                    continue
+                for item in page.get("contents", []):
+                    ch = item.get("chapter")
+                    sec = item.get("section")
+                    canonical_sec = canonicalize_section(ch, sec) or sec
+                    if ch is not None:
+                        has_chapters = True
+                    ch_key = str(ch) if ch is not None else ""
+                    if ch_key == "0":
+                        continue
+                    if ch_key not in catalog:
+                        catalog[ch_key] = []
+                    sec_key = reader_section_key(doc_name, ch, canonical_sec)
+                    section_key = (ch_key, sec_key)
+                    if canonical_sec and section_key not in section_keys:
+                        section_keys.add(section_key)
+                        catalog[ch_key].append(canonical_sec)
+
+        def chapter_sort_key(ch_num):
+            if ch_num == "":
+                return -1
+            try:
+                return int(ch_num)
+            except ValueError:
+                return 9999
+
+        catalog_by_doc[doc_name] = {
+            "has_chapters": has_chapters,
+            "chapters": [
+                {"chapter": ch_num, "sections": catalog[ch_num]}
+                for ch_num in sorted(catalog.keys(), key=chapter_sort_key)
+            ],
+        }
+
+    return catalog_by_doc
 
 
 @app.route("/")
@@ -228,28 +294,34 @@ def reader():
 
 @app.route("/api/reader/section")
 def api_reader_section():
+    document = request.args.get("document", "교과서")
     chapter = request.args.get("chapter")
     section = request.args.get("section")
     
-    if not chapter:
+    if document not in READER_DOCUMENTS:
+        return jsonify({"error": "Unsupported document"}), 400
+    if document == "교과서" and not chapter:
         return jsonify({"error": "Missing chapter parameter"}), 400
         
     def get_section_contents(version_key):
-        doc_data = SEARCH_DATA.get(version_key, {}).get("documents", {}).get("교과서", {})
+        doc_data = SEARCH_DATA.get(version_key, {}).get("documents", {}).get(document, {})
         pages = doc_data.get("pages", [])
+        requested_section_key = reader_section_key(document, chapter, section)
         
         contents = []
         for p in pages:
+            if not is_reader_page(document, version_key, p):
+                continue
             page_contents = []
             matched_on_page = False
             for item in p.get("contents", []):
                 # Match both chapter and section if section is provided
-                match_ch = str(item.get("chapter")) == chapter
+                match_ch = True if not chapter else str(item.get("chapter")) == chapter
                 item_section = item.get("section")
-                canonical_item_section = canonicalize_section(item.get("chapter"), item_section)
+                canonical_item_section = canonicalize_section(item.get("chapter"), item_section) or item_section
                 if section:
-                    requested_section = canonicalize_section(chapter, section)
-                    match_sec = canonical_item_section == requested_section
+                    item_section_key = reader_section_key(document, item.get("chapter"), canonical_item_section)
+                    match_sec = item_section_key == requested_section_key
                 else:
                     match_sec = True
                 

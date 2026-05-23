@@ -140,6 +140,10 @@
         <div class="panel">
             <div class="filters">
                 <div>
+                    <label>문서</label>
+                    <select id="document"></select>
+                </div>
+                <div id="chapterFilter">
                     <label>챕터</label>
                     <select id="chapter"></select>
                 </div>
@@ -163,14 +167,48 @@
         
         // URL Params
         const urlParams = new URLSearchParams(window.location.search);
+        const initDocument = urlParams.get('document') || '교과서';
         const initChapter = urlParams.get('chapter');
         const initSection = urlParams.get('section');
         const hlKeywords = urlParams.get('hl') ? urlParams.get('hl').split(',') : [];
 
+        function currentCatalog() {
+            const doc = document.getElementById('document').value;
+            return CATALOG[doc] || { has_chapters: false, chapters: [] };
+        }
+
+        function fillDocuments() {
+            const sel = document.getElementById('document');
+            sel.innerHTML = '';
+            for (const docName of Object.keys(CATALOG)) {
+                const opt = document.createElement('option');
+                opt.value = docName;
+                opt.textContent = docName;
+                sel.appendChild(opt);
+            }
+            if (CATALOG[initDocument]) {
+                sel.value = initDocument;
+            }
+        }
+
         function fillChapters() {
+            const catalog = currentCatalog();
+            const chapterFilter = document.getElementById('chapterFilter');
             const sel = document.getElementById('chapter');
             sel.innerHTML = '';
-            for (const ch of CATALOG) {
+
+            if (!catalog.has_chapters) {
+                chapterFilter.style.display = 'none';
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = '(챕터 없음)';
+                sel.appendChild(opt);
+                return;
+            }
+
+            chapterFilter.style.display = '';
+            for (const ch of catalog.chapters) {
+                if (!ch.chapter) continue;
                 const opt = document.createElement('option');
                 opt.value = ch.chapter;
                 opt.textContent = `제${ch.chapter}장`;
@@ -182,11 +220,12 @@
         }
 
         function fillSections() {
+            const catalog = currentCatalog();
             const chVal = document.getElementById('chapter').value;
             const sel = document.getElementById('section');
             sel.innerHTML = '<option value="">(섹션 전체)</option>';
             
-            const ch = CATALOG.find(c => String(c.chapter) === String(chVal));
+            const ch = catalog.chapters.find(c => String(c.chapter) === String(chVal));
             if (ch && ch.sections) {
                 for (const sec of ch.sections) {
                     if (!sec) continue;
@@ -199,6 +238,8 @@
             
             if (initSection && Array.from(sel.options).some(o => o.value === initSection)) {
                 sel.value = initSection;
+            } else if (!catalog.has_chapters && sel.options.length > 1) {
+                sel.value = sel.options[1].value;
             }
         }
         
@@ -247,19 +288,22 @@
         }
 
         async function loadContent() {
+            const documentName = document.getElementById('document').value;
+            const catalog = currentCatalog();
             const chapter = document.getElementById('chapter').value;
             const section = document.getElementById('section').value;
             const btn = document.getElementById('loadBtn');
             const container = document.getElementById('readerContainer');
             
-            if (!chapter) return;
+            if (catalog.has_chapters && !chapter) return;
             
             btn.disabled = true;
             btn.textContent = '불러오는 중...';
             container.innerHTML = '<div class="no-results">데이터를 불러오는 중입니다...</div>';
             
             try {
-                const params = new URLSearchParams({ chapter });
+                const params = new URLSearchParams({ document: documentName });
+                if (chapter) params.set('chapter', chapter);
                 if (section) params.set('section', section);
                 
                 const resp = await fetch(`/api/reader/section?${params.toString()}`);
@@ -271,7 +315,9 @@
                     
                 // Update URL without reload
                 const newUrl = new URL(window.location);
-                newUrl.searchParams.set('chapter', chapter);
+                newUrl.searchParams.set('document', documentName);
+                if (chapter) newUrl.searchParams.set('chapter', chapter);
+                else newUrl.searchParams.delete('chapter');
                 if (section) newUrl.searchParams.set('section', section);
                 else newUrl.searchParams.delete('section');
                 window.history.pushState({}, '', newUrl);
@@ -294,6 +340,12 @@
             }
         }
 
+        document.getElementById('document').addEventListener('change', () => {
+            fillChapters();
+            fillSections();
+            loadContent();
+        });
+
         document.getElementById('chapter').addEventListener('change', () => {
             fillSections();
             loadContent();
@@ -303,9 +355,10 @@
         document.getElementById('loadBtn').addEventListener('click', loadContent);
 
         // Init
+        fillDocuments();
         fillChapters();
         fillSections();
-        if (initChapter) {
+        if (initChapter || initDocument !== '교과서') {
             loadContent();
         }
     </script>

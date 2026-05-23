@@ -569,9 +569,10 @@
             for (const r of data.results) {
                 let readerUrl = '';
                 let readerLink = '';
-                if (r.document === '교과서' && r.chapter) {
+                if ((r.document === '교과서' || r.document === '교사용 지침서') && (r.chapter || r.section)) {
                     const params = new URLSearchParams();
-                    params.set('chapter', r.chapter);
+                    params.set('document', r.document);
+                    if (r.chapter) params.set('chapter', r.chapter);
                     if (r.section) params.set('section', r.section);
                     if (r.matched_keywords && r.matched_keywords.length > 0) {
                         params.set('hl', r.matched_keywords.join(','));

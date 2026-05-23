@@ -64,6 +64,11 @@ EXPECTED_PHRASES = [
     "하느님과 다르게 사랑하려",
 ]
 
+ORIGINAL_TEACHER_GUIDE_HEALING_SUBSECTION = (
+    "치유는 병이라는 환상의 목적이 무엇인지 이해해야 이루어진다. "
+    "이것 없이는 치유가 불가능하다."
+)
+
 HANGUL = r"[\uAC00-\uD7A3]"
 MID_WORD_BREAK = re.compile(f"({HANGUL})\n({HANGUL})")
 PAGE_NUMBER_MARKER = re.compile(r"\s*-\s*\d+\s*-\s*")
@@ -411,7 +416,7 @@ def build_local_data(baseline):
     return local_data, missing_pdfs
 
 
-def repair_page(page, local_text, state):
+def repair_page(page, local_text, state, version_key=None, doc_name=None):
     repaired = copy.deepcopy(page)
     existing_contents = page.get("contents", [])
     default_chapter, default_section = page_defaults(page)
@@ -455,8 +460,86 @@ def repair_page(page, local_text, state):
                 item["content"] = normalize_text(item["content"])
         repaired["contents"] = existing_contents
 
+    repair_teacher_guide_sections(repaired, version_key, doc_name)
     refresh_page_metadata(repaired)
     return repaired
+
+
+def set_item_section(item, section):
+    item["section_raw"] = section
+    item["section"] = section
+    item["section_id"] = get_section_id(item.get("chapter"), section)
+
+
+def repair_teacher_guide_sections(page, version_key, doc_name):
+    """Correct section metadata quirks specific to the teacher guide PDFs."""
+    if doc_name != "교사용 지침서":
+        return
+
+    page_num = page.get("page")
+    contents = page.get("contents", [])
+
+    if version_key == "original":
+        if page_num in (4, 5):
+            for item in contents:
+                set_item_section(item, "서문")
+
+        for item in contents:
+            if item.get("section") == ORIGINAL_TEACHER_GUIDE_HEALING_SUBSECTION:
+                set_item_section(item, "치유는 어떻게 이루어지는가?")
+
+    if version_key == "park":
+        if page_num in (8, 9):
+            for item in contents:
+                set_item_section(item, "서문")
+
+        if page_num == 10:
+            in_first_section = False
+            for item in contents:
+                content = item.get("content", "")
+                if "1. 신의 교사는 누구인가?" in content:
+                    in_first_section = True
+                set_item_section(item, "신의 교사는 누구인가?" if in_first_section else "서문")
+
+        if page_num in (150, 151):
+            for item in contents:
+                if item.get("section") == "그렇다면 심리치료의 과정은":
+                    set_item_section(item, "치유의 정의(定義)")
+
+        if page_num in (152, 153):
+            for item in contents:
+                if item.get("section") == "그렇다면 심리치료의 과정은":
+                    set_item_section(item, "치유의 정의(定義)")
+
+        if page_num == 154:
+            marker = "7) 환자와 치료자의 이상적인 관계"
+            split_contents = []
+            in_patient_relation = False
+            for item in contents:
+                content = item.get("content", "")
+                marker_index = content.find(marker)
+                if marker_index > 0:
+                    before = copy.deepcopy(item)
+                    before["content"] = content[:marker_index].strip()
+                    set_item_section(before, "치유의 정의(定義)")
+                    if before["content"]:
+                        split_contents.append(before)
+
+                    after = copy.deepcopy(item)
+                    after["content"] = content[marker_index:].strip()
+                    set_item_section(after, "환자와 치료자의 이상적인 관계")
+                    split_contents.append(after)
+                    in_patient_relation = True
+                    continue
+
+                item = copy.deepcopy(item)
+                if in_patient_relation or marker_index == 0:
+                    in_patient_relation = True
+                    set_item_section(item, "환자와 치료자의 이상적인 관계")
+                elif item.get("section") == "그렇다면 심리치료의 과정은":
+                    set_item_section(item, "치유의 정의(定義)")
+                split_contents.append(item)
+            page["contents"] = split_contents
 
 
 def page_defaults(page):
@@ -523,7 +606,13 @@ def repair_data(data):
             repaired_pages = []
             for page in doc_data.get("pages", []):
                 page_num = page.get("page")
-                repaired_pages.append(repair_page(page, local_pages.get(page_num, ""), state))
+                repaired_pages.append(repair_page(
+                    page,
+                    local_pages.get(page_num, ""),
+                    state,
+                    version_key=version_key,
+                    doc_name=doc_name,
+                ))
             doc_data["pages"] = repaired_pages
             doc_data["pageCount"] = len(local_pages)
 
